@@ -134,6 +134,32 @@ def user_profile(request):
     return render(request, 'user_profile.html', context)
 
 
+def get_api_perms():
+    """
+    Return all API perms for @groups and users.
+
+    Format: {resource: {create/read/update/delete: [users, @groups]}}
+    """
+    perms = {}
+
+    for obj in models.ResourcePermission.objects.all():
+        for i in obj.groupresourcepermission_set.all():
+            perms.setdefault(obj.resource.name, {}).setdefault(obj.permission.name, set()).add("@%s" % i.group)
+        # TODO: user perms
+    # TODO: dict is unordered; use OrderedDict?
+    return perms
+
+
+def api_perms(request):
+    """
+    Render API resource perms.
+    """
+    context = {
+        'api_perms': get_api_perms(),
+    }
+    return render(request, 'api_perms.html', context)
+
+
 def refresh_ldap_groups(request):
     user = request.user
     backends.update_user_from_ldap(user)

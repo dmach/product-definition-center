@@ -140,15 +140,14 @@ def user_profile(request):
     return render(request, 'user_profile.html', context)
 
 
-def get_users_and_groups(arg):
+def get_users_and_groups(resource_permission):
     # get all groups
     members = dict()
     groups_list = []
     try:
         group_resource_permission_list = get_list_or_404(models.GroupResourcePermission,
-                                                         resource_permission=arg)
-        for group_resource_permission in group_resource_permission_list:
-            groups_list.append(str(group_resource_permission.group.name))
+                                                         resource_permission=resource_permission)
+        groups_list = [str(obj.group.name) for obj in group_resource_permission_list]
     except Http404:
         pass
 
@@ -159,8 +158,15 @@ def get_users_and_groups(arg):
         if user.is_superuser:
             users_list.append(str(user.username))
         else:
-            resource_permission_set = get_resource_permission_set(user)
-            if arg in resource_permission_set:
+            if read_permission_for_all():
+                resource_permission_set = set([obj for obj in models.ResourcePermission.objects.filter(
+                    permission__name__iexact='read')])
+            group_id_list = [group.id for group in user.groups.all()]
+            queryset = models.GroupResourcePermission.objects.filter(group__id__in=group_id_list)
+
+            for group_resource_permission in queryset:
+                resource_permission_set.add(group_resource_permission.resource_permission)
+            if resource_permission in resource_permission_set:
                 users_list.append(str(user.username))
 
     members['groups'] = sorted(groups_list)
@@ -215,7 +221,6 @@ def get_url_with_resource(request):
         viewsets[prefix] = viewset
     sorted_api_root_dict = OrderedDict(sorted(api_root_dict.items()))
     for key, url_name in sorted_api_root_dict.items():
-
         name = URL_ARG_RE.sub(r'{\1}', key)
         ret[name] = None
         urlargs = [_get_arg_value(arg[0]) for arg in URL_ARG_RE.findall(key)]
@@ -251,14 +256,10 @@ def get_api_perms(request):
     ret = get_url_with_resource(request)
 
     for obj in models.ResourcePermission.objects.all():
-
         name = URL_ARG_RE.sub(r'{\1}', obj.resource.name)
         url = ret[name]
         members = get_users_and_groups(obj)
-        if members:
-            result = _dict_to_str(members)
-        else:
-            result = 'N/A'
+        result = _dict_to_str(members)
         perms.setdefault(name, OrderedDict()).setdefault(obj.permission.name, set()).add("%s" % result)
         perms.setdefault(name, OrderedDict()).setdefault('url', url)
 

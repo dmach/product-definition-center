@@ -147,7 +147,7 @@ def get_users_and_groups(resource_permission):
     try:
         group_resource_permission_list = get_list_or_404(models.GroupResourcePermission,
                                                          resource_permission=resource_permission)
-        groups_list = [str(obj.group.name) for obj in group_resource_permission_list]
+        groups_list = ["@" + str(obj.group.name) for obj in group_resource_permission_list]
     except Http404:
         pass
 
@@ -169,8 +169,7 @@ def get_users_and_groups(resource_permission):
             if resource_permission in resource_permission_set:
                 users_list.append(str(user.username))
 
-    members['groups'] = sorted(groups_list)
-    members['users'] = sorted(users_list)
+    members = sorted(groups_list + users_list)
     return members
 
 
@@ -236,16 +235,6 @@ def get_url_with_resource(request):
     return ret
 
 
-def _dict_to_str(arg):
-    result = ''
-    if isinstance(arg, dict):
-        for key, value in arg.items():
-            result += ' ' + key + ':'
-            for i in value:
-                result += ' ' + i + ','
-    return result
-
-
 def get_api_perms(request):
     """
     Return all API perms for @groups and users.
@@ -259,9 +248,16 @@ def get_api_perms(request):
         name = URL_ARG_RE.sub(r'{\1}', obj.resource.name)
         url = ret[name]
         members = get_users_and_groups(obj)
-        result = _dict_to_str(members)
-        perms.setdefault(name, OrderedDict()).setdefault(obj.permission.name, set()).add("%s" % result)
+        perms.setdefault(name, OrderedDict()).setdefault(obj.permission.name, set()).update(members)
         perms.setdefault(name, OrderedDict()).setdefault('url', url)
+
+    # sort groups and users
+    for resource in perms:
+        for perm in perms[resource]:
+            if not isinstance(perms[resource][perm], set):
+                # sort only lists with groups and users, skip 'url'
+                continue
+            perms[resource][perm] = sorted(perms[resource][perm])
 
     result = OrderedDict(sorted(perms.items()))
     return result
